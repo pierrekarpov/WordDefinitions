@@ -9,7 +9,7 @@ services:
   environment:
    - ENV=development
    - PORT=4000
-   - DB=mongodb://mongodb:27017/todoDev
+   - DB=mongodb://mongodb:27017/wordDev
    - APP_ID=${APP_ID}
    - APP_KEY=${APP_KEY}
  mongodb:

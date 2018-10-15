@@ -3,6 +3,7 @@ import os
 from flask import request, jsonify
 import requests as r
 from app import app, mongo
+import json
 
 ROOT_PATH = os.environ.get("ROOT_PATH")
 
@@ -82,3 +83,44 @@ def fetch_definitions():
             res_words.append({"word": w, "definition": d})
 
     return jsonify({"ok": True, "insert_count": len(res_words), "words": res_words}), 200
+
+
+@app.route("/test/word", methods=["GET"])
+def test_word():
+    test_data = [
+        {"word": "applesss", "expected": "<definition not in database>"},
+        {"word": "apple", "expected": "the round fruit of a tree of the rose family, which typically has thin green or red skin and crisp flesh."},
+        {"word": "analyze", "expected": "<could not get definition from oxforddictionaries API>"},
+        {"word": "attack", "expected": "take aggressive military action against (a place or enemy forces) with weapons or armed force"},
+        {"word": "arrest", "expected": "seize (someone) by legal authority and take them into custody"},
+        {"word": "acorn", "expected": "<definition not in database>"},
+        {"word": "jhjhgjhgjhghj", "expected": "<definition not in database>"},
+        {"word": "", "expected": "<definition not in database>"},
+        {"word": -15543, "expected": "<definition not in database>"},
+        {"word": True, "expected": "<definition not in database>"},
+        {"word": False, "expected": "<definition not in database>"},
+        {"word": None, "expected": "Bad request parameters!"}
+    ]
+    results = []
+    success_count = 0
+
+    fetch_definitions()
+
+    for t in test_data:
+        print t
+        request.args = {"word": t["word"]}
+        res, _ = word()
+        data = json.loads(res.get_data())
+
+        if t["word"] is not None:
+            t["actual"] = data["definition"]
+        else:
+            t["actual"] = data["message"]
+
+        t["success"] = t["expected"] == t["actual"]
+        if t["success"]:
+            success_count = success_count + 1
+        results.append(t)
+
+    results_str = "Passed " + str(success_count) + " tests out of " + str(len(test_data))
+    return jsonify({"ok": True, "summary": results_str, "results": results}), 200
