@@ -3,14 +3,14 @@ services:
  web_dev:
   build: .
   ports:
-   - "4000:4000"
+   - "${OUT_PORT}:${OUT_PORT}"
   networks:
    - backend
   volumes:
    - .:/app
   environment:
    - ENV=development
-   - PORT=4000
+   - PORT=${OUT_PORT}
    - DB=mongodb://mongodb:27017/wordDev
    - APP_ID=${APP_ID}
    - APP_KEY=${APP_KEY}
