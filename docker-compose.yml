@@ -14,6 +14,7 @@ services:
    - DB=mongodb://mongodb:27017/wordDev
    - APP_ID=${APP_ID}
    - APP_KEY=${APP_KEY}
+   - TEST_KEY=${TEST_KEY}
  mongodb:
   image: mongo:latest
   container_name: "mongodb"

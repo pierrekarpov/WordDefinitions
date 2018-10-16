@@ -7,7 +7,6 @@ from app import app, mongo
 
 ROOT_PATH = os.environ.get("ROOT_PATH")
 
-# @app.route("/word", methods=["GET", "POST"])
 @app.route("/word", methods=["GET"])
 def word():
     if request.method == "GET":
@@ -20,29 +19,6 @@ def word():
             return jsonify(res), 200
         else:
             return jsonify({"message": "Bad request parameters!"}), 400
-
-    # data = request.get_json()
-    # if request.method == "POST":
-    #     if data.get("word", None) is not None and data.get("definition", None) is not None:
-    #         mongo.db.words.insert_one(data)
-    #         return jsonify({"ok": True, "message": "Word created successfully!", "data": data}), 200
-    #     else:
-    #         return jsonify({"ok": False, "message": "Bad request parameters!"}), 400
-
-# @app.route("/word/all", methods=["GET"])
-# def all_words():
-#     words = []
-#     cursor = mongo.db.words
-#
-#     for w in cursor.find():
-#         words.append(w)
-#
-#     return jsonify({"ok": True, "wordCount": len(words), "words": words}), 200
-#
-# @app.route("/word/all/delete", methods=["DELETE"])
-# def delete_all_words():
-#     mongo.db.words.delete_many({})
-#     return jsonify({"ok": True, "message": "all words deleted"}), 200
 
 def get_definition(w):
     APP_ID = os.getenv("APP_ID")
@@ -97,6 +73,12 @@ def fetch_definitions():
 
 @app.route("/test/word", methods=["GET"])
 def test_word():
+    query = request.args
+    is_not_allowed = query.get("testKey", None) is None or query.get("testKey", None) != os.getenv("TEST_KEY")
+    if is_not_allowed:
+        return jsonify({"message": "Bad test key!"}), 400
+    request.args = {}
+
     test_data = [
         {"word": "applesss", "expected": "<definition not in database>"},
         {"word": "apple", "expected": "the round fruit of a tree of the rose family, which typically has thin green or red skin and crisp flesh."},
@@ -136,3 +118,125 @@ def test_word():
 
     results_str = "Passed " + str(success_count) + " tests out of " + str(len(test_data))
     return jsonify({"ok": True, "summary": results_str, "results": results}), 200
+
+@app.route("/test/word/fetch-definitions/add", methods=["GET"])
+def test_fetch_definitons_add():
+    query = request.args
+    is_not_allowed = query.get("testKey", None) is None or query.get("testKey", None) != os.getenv("TEST_KEY")
+    if is_not_allowed:
+        return jsonify({"message": "Bad test key!"}), 400
+    request.args = {}
+
+    test_set = {
+        "passed_empty_db": {},
+        "passed_filled_db": {},
+        "passed_filled_again_db": {},
+        "passed_all_words_in_db": {}
+    }
+
+
+    mongo.db.words.delete_many({})
+    test_set["passed_empty_db"]["result"] = mongo.db.words.count() == 0
+
+    _, _ = fetch_definitions()
+
+    words = set()
+    with open(os.path.join(ROOT_PATH, "data/words/words.txt"), "r") as f:
+        for line in f:
+            for word in line.split():
+                words.add(word)
+
+    test_set["passed_filled_db"]["result"] = mongo.db.words.count() == len(words)
+
+    _, _ = fetch_definitions()
+    test_set["passed_filled_again_db"]["result"] = mongo.db.words.count() == len(words)
+
+    missing_words = []
+    for w in words:
+        word = mongo.db.words.find_one({"word": w})
+        if word is None:
+            missing_words.append(w)
+
+    test_set["passed_all_words_in_db"]["result"] = len(missing_words) == 0
+    if not test_set["passed_all_words_in_db"]["result"]:
+        test_set["passed_all_words_in_db"]["missing_words"] = missing_words
+
+    failed_tests = [[t, test_set[t]] for t in test_set if not test_set[t]["result"]]
+    pass_count = len(test_set.keys()) - len(failed_tests)
+
+    res = {
+        "ok": True,
+        "summary": "Passed " + str(pass_count) + " tests out of " + str(len(test_set.keys()))
+    }
+    if len(failed_tests) > 0:
+        res["failed_test"] = failed_tests
+
+    return jsonify(res), 200
+
+@app.route("/test/word/fetch-definitions/forceRefresh", methods=["GET"])
+def test_fetch_definitons_force_refresh():
+    query = request.args
+    is_not_allowed = query.get("testKey", None) is None or query.get("testKey", None) != os.getenv("TEST_KEY")
+    if is_not_allowed:
+        return jsonify({"message": "Bad test key!"}), 400
+    request.args = {}
+
+    test_set = {
+        "passed_filled_db": {},
+        "passed_db_after_delete": {},
+        "passed_filled_db_after_delete": {},
+        "passed_filled_again_after_update": {},
+        "passed_filled_again_after_update_force_refresh": {},
+    }
+
+    # NOTE: test fetch adds all words
+    _, _ = fetch_definitions()
+    words = set()
+    with open(os.path.join(ROOT_PATH, "data/words/words.txt"), "r") as f:
+        for line in f:
+            for word in line.split():
+                words.add(word)
+
+    test_set["passed_filled_db"]["result"] = mongo.db.words.count() == len(words)
+
+    # NOTE: test deleting word from db
+    w_to_delete = words.pop()
+    words.add(w_to_delete)
+    mongo.db.words.delete_one({"word": w_to_delete})
+    test_set["passed_db_after_delete"]["result"] = mongo.db.words.count() == len(words) - 1
+
+
+    # NOTE: test inserting deleted word back
+    _, _ = fetch_definitions()
+    test_set["passed_filled_db_after_delete"]["result"] = mongo.db.words.count() == len(words)
+
+    # NOTE: test fetch SHOULD NOT modify updated documents in db
+    w_to_update = words.pop()
+    words.add(w_to_update)
+    tmp_def = "<tmp def>"
+    mongo.db.words.update_one({"word": w_to_update}, {"$set": {"definition": tmp_def}}, False)
+    _, _ = fetch_definitions()
+
+    word = mongo.db.words.find_one({"word": w_to_update})
+    test_set["passed_filled_again_after_update"]["result"] = word is not None and word["definition"] == tmp_def
+
+
+    # NOTE: test fetch SHOULD modify updated documents in db, if flag is up
+    request.args = {"forceRefresh": "true"}
+    _, _ = fetch_definitions()
+
+    word = mongo.db.words.find_one({"word": w_to_update})
+    test_set["passed_filled_again_after_update_force_refresh"]["result"] = word is not None and word["definition"] != tmp_def
+
+
+    failed_tests = [[t, test_set[t]] for t in test_set if not test_set[t]["result"]]
+    pass_count = len(test_set.keys()) - len(failed_tests)
+
+    res = {
+        "ok": True,
+        "summary": "Passed " + str(pass_count) + " tests out of " + str(len(test_set.keys()))
+    }
+    if len(failed_tests) > 0:
+        res["failed_test"] = failed_tests
+
+    return jsonify(res), 200
