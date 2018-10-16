@@ -1,14 +1,12 @@
 """ index file for REST APIs using Flask """
+from app import app
 import os
 import sys
-import requests
-from flask import jsonify, request, make_response, send_from_directory
+from flask import jsonify, make_response, send_from_directory
 
 ROOT_PATH = os.path.dirname(os.path.realpath(__file__))
 os.environ.update({'ROOT_PATH': ROOT_PATH})
 sys.path.append(os.path.join(ROOT_PATH, 'modules'))
-
-from app import app
 
 # Port variable to run the server on.
 PORT = os.environ.get('PORT')

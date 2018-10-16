@@ -1,9 +1,9 @@
 ''' controller and routes for words '''
 import os
+import json
 from flask import request, jsonify
 import requests as r
 from app import app, mongo
-import json
 
 ROOT_PATH = os.environ.get("ROOT_PATH")
 
@@ -14,6 +14,7 @@ def word():
         query = request.args
         if query.get("word", None) is not None:
             word = mongo.db.words.find_one({"word": query["word"]})
+            # NOTE: if word is not in the database, show <definition not in database> as definition
             definition = word["definition"] if word is not None else "<definition not in database>"
             res = {"word": query["word"], "definition": definition}
             return jsonify(res), 200
@@ -52,8 +53,10 @@ def get_definition(w):
 
     res = r.get(url, headers={"app_id": APP_ID, "app_key": APP_KEY})
 
+    #NOTE: if cannot get data from API, store <could not get definition from oxforddictionaries API> as definition
     d = "<could not get definition from oxforddictionaries API>"
     if res.status_code == 200:
+        # NOTE: try/except to handle when response has no or invalid results
         try:
             d = res.json()["results"][0]["lexicalEntries"][0]["entries"][0]["senses"][0]["definitions"][0]
         except KeyError:
@@ -65,7 +68,10 @@ def get_definition(w):
 def fetch_definitions():
     args = request.args
     words = set()
+    # NOTE: no official str to bool type checking, here is our own
     true_strings = ["True", "true", "yes", "YES"]
+
+    # NOTE: save words.txt file in <root>/data/words
     with open(os.path.join(ROOT_PATH, "data/words/words.txt"), "r") as f:
         for line in f:
             for word in line.split():
@@ -74,11 +80,15 @@ def fetch_definitions():
     res_words = []
     for w in words:
         data = mongo.db.words.find_one({"word": w})
+
+        # NOTE: optional flag to force a refresh,
+        #       we will call the API only if the word in not in our database, or if the flag is up
         is_force_refresh = args and args["forceRefresh"] and args["forceRefresh"] in true_strings
         should_fetch = data is None or is_force_refresh
 
         if should_fetch:
             d = get_definition(w)
+            # NOTE: upsert operation: updat if exist, if not, insert
             mongo.db.words.update_one({"word": w}, {"$set": {"definition": d}}, True)
             res_words.append({"word": w, "definition": d})
 
@@ -109,9 +119,11 @@ def test_word():
     for t in test_data:
         print t
         request.args = {"word": t["word"]}
+        # NOTE: calling the function associated with route /word
         res, _ = word()
         data = json.loads(res.get_data())
 
+        # NOTE: special case when word argument is not provided
         if t["word"] is not None:
             t["actual"] = data["definition"]
         else:

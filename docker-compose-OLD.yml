@@ -1,11 +1,9 @@
-version: '3.0'
+version: '3.5'
 services:
  web_dev:
   build: .
   ports:
    - "4000:4000"
-  networks:
-   - backend
   volumes:
    - .:/app
   environment:
@@ -22,10 +20,9 @@ services:
    - MONGO_LOG_DIR=/dev/null
   volumes:
    - ./data/db:/usr/data/db
-  networks:
-   - backend
   ports:
    - 27017:27017
   command: mongod --smallfiles --logpath=/dev/null # --quiet
 networks:
- backend:
+ default:
+  name: web_dev
